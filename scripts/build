@@ -1,0 +1,4 @@
+#!/bin/bash
+
+docker build --no-cache -t jestovar1980/ruby-helloworld:latest .
+docker push jestovar1980/ruby-helloworld:latest

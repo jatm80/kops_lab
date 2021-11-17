@@ -1,0 +1,44 @@
+#!/bin/bash
+
+set -e
+
+BUCKET=${BUCKET:-lab-statefiles-101}
+export AWS_REGION="ap-southeast-2"
+export AWS_DEFAULT_REGION="ap-southeast-2"
+export AWS_PROFILE=${AWS_PROFILE:-aws-cert1}
+export NAME=kops.awslab.telephony.city
+
+
+aws sts get-caller-identity
+if ! [ "$?" -eq 0 ]; then
+    echo "Check aws cli credentials"
+    exit 255
+fi
+
+ARN=$(aws iam list-policies --query 'Policies[?PolicyName==`AWSLoadBalancerControllerIAMPolicy`].Arn' --output text)
+
+if [ -z "${ARN}" ]; then
+    echo "attaching policy in case ingress controller is AWS ALB"
+    aws iam create-policy \
+        --policy-name AWSLoadBalancerControllerIAMPolicy \
+        --policy-document file://scripts/ingress/iam-policy.json
+
+    ARN=$(aws iam list-policies --query 'Policies[?PolicyName==`AWSLoadBalancerControllerIAMPolicy`].Arn' --output text)
+    echo ${ARN}
+    aws iam attach-role-policy --policy-arn ${ARN} --role-name masters.${NAME}
+    aws iam attach-role-policy --policy-arn ${ARN} --role-name nodes.${NAME}
+
+    ARN=$(aws iam list-policies --query 'Policies[?PolicyName==`ElasticLoadBalancingFullAccess`].Arn' --output text)
+    echo ${ARN}
+    aws iam attach-role-policy --policy-arn ${ARN} --role-name masters.${NAME}
+    aws iam attach-role-policy --policy-arn ${ARN} --role-name nodes.${NAME}
+fi
+
+kubectl apply \
+    --validate=false \
+    -f https://github.com/jetstack/cert-manager/releases/download/v1.5.4/cert-manager.yaml
+
+
+kubectl apply \
+    --validate=false \
+    -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.0.4/deploy/static/provider/aws/deploy.yaml

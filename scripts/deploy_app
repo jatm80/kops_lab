@@ -1,0 +1,56 @@
+#!/bin/bash
+
+set -e
+
+BUCKET=${BUCKET:-lab-statefiles-tf-101}
+export AWS_REGION="ap-southeast-2"
+export AWS_DEFAULT_REGION="ap-southeast-2"
+export AWS_PROFILE=${AWS_PROFILE:-aws-cert1}
+export TF_PATH="-chdir=tf"
+export TF_VAR_appname=${APP_NAME:-helloworld}
+export TF_VAR_image="jestovar1980/ruby-helloworld:latest"
+
+aws sts get-caller-identity
+if ! [ "$?" -eq 0 ]; then
+    echo "Check aws cli credentials"
+    exit 255
+fi
+
+if ! aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null; then
+    aws s3api create-bucket \
+        --bucket ${BUCKET} \
+        --create-bucket-configuration LocationConstraint=ap-southeast-2
+    if [ "$?" -ne "0" ];then
+    echo "Error creating bucket"
+    exit 1
+    fi
+
+    aws s3api put-bucket-versioning \
+        --bucket ${BUCKET}  \
+        --versioning-configuration Status=Enabled
+
+    if [ "$?" -ne "0" ];then
+    echo "Error configuring bucket"
+    exit 1
+    fi
+
+    aws s3api put-bucket-encryption \
+    --bucket ${BUCKET}  \
+    --server-side-encryption-configuration '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}'
+    if [ "$?" -ne "0" ];then
+    echo "Error configuring bucket encryption"
+    exit 1
+    fi
+fi
+
+terraform ${TF_PATH} init -backend=true -backend-config=bucket=${BUCKET} \
+-backend-config=profile=${AWS_PROFILE} \
+-backend-config=region=${AWS_REGION} \
+-backend-config=key=ci/${TF_VAR_appname} \
+-backend-config=encrypt=true
+
+terraform ${TF_PATH} validate
+terraform ${TF_PATH} plan --out=hello_tf_plan
+terraform ${TF_PATH} apply -auto-approve "hello_tf_plan"
+
+rm -rf tf/.terraform

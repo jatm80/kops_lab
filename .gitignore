@@ -1,0 +1,3 @@
+tf/.terraform
+tf/.terraform/*
+tf/hello_tf_plan
